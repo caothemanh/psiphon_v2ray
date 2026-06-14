@@ -8,4 +8,8 @@ require (
 	golang.org/x/mobile v0.0.0-20260602190626-68735029466e
 )
 
-replace github.com/xtls/xray-core => github.com/xtls/xray-core v1.260327.1-0.20260601021109-94ffd50060f1
+replace (
+	github.com/xtls/xray-core => github.com/xtls/xray-core v1.260327.1-0.20260601021109-94ffd50060f1
+	github.com/Psiphon-Labs/quic-go => github.com/Psiphon-Labs/quic-go v0.0.0-20240424181006-45545f5e1536
+	github.com/quic-go/qpack => github.com/quic-go/qpack v0.4.1
+)
