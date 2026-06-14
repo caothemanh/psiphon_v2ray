@@ -16,33 +16,21 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # --------------------------------------------------------
-      # 1. Checkout
-      # --------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --------------------------------------------------------
-      # 2. Setup Go
-      # --------------------------------------------------------
       - name: Setup Go 1.21
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
           cache: true
 
-      # --------------------------------------------------------
-      # 3. Setup Java (Android SDK cần Java 17)
-      # --------------------------------------------------------
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # --------------------------------------------------------
-      # 4. Setup Android SDK & NDK
-      # --------------------------------------------------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -52,65 +40,29 @@ jobs:
           echo "NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      # --------------------------------------------------------
-      # 5. Install gomobile
-      # --------------------------------------------------------
       - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      # --------------------------------------------------------
-      # 6. gomobile init
-      # --------------------------------------------------------
       - name: gomobile init
-        run: |
-          gomobile init
+        run: gomobile init
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
 
-      # --------------------------------------------------------
-      # 7. Fix Psiphon dependency pinning
-      # --------------------------------------------------------
-      - name: Fix Psiphon dependency pinning
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core/master/go.mod \
-            -o /tmp/psiphon_upstream.go.mod
-          python3 -c "
-          import re
-          with open('/tmp/psiphon_upstream.go.mod') as f:
-              upstream = f.read()
-          m = re.search(r'replace\s*\((.*?)\)', upstream, re.DOTALL)
-          if m:
-              with open('go.mod', 'a') as f:
-                  f.write('\nreplace (\n' + m.group(1).strip() + '\n)\n')
-              print('Patched go.mod with Psiphon replace directives')
-          else:
-              print('No replace block found in upstream go.mod')
-          "
-
-      # --------------------------------------------------------
-      # 8. Download Go dependencies
-      # --------------------------------------------------------
       - name: Download dependencies
         run: |
           go mod download
           go mod tidy
 
-      # --------------------------------------------------------
-      # 9. Apply patches (nếu cần)
-      # --------------------------------------------------------
       - name: Apply Xray-core patches
         run: |
           if [ -f "patches/patch_xray.py" ]; then
             python3 patches/patch_xray.py
           fi
 
-      # --------------------------------------------------------
-      # 10. Build AAR
-      # --------------------------------------------------------
       - name: Build AAR
         run: |
           gomobile bind \
@@ -125,9 +77,6 @@ jobs:
           GOFLAGS: "-mod=mod"
           CGO_ENABLED: "1"
 
-      # --------------------------------------------------------
-      # 11. Verify AAR
-      # --------------------------------------------------------
       - name: Verify AAR contents
         run: |
           echo "=== AAR size ==="
@@ -143,9 +92,6 @@ jobs:
                       print(n)
           "
 
-      # --------------------------------------------------------
-      # 12. Upload artifact
-      # --------------------------------------------------------
       - name: Upload AAR
         uses: actions/upload-artifact@v4
         with:
@@ -155,9 +101,6 @@ jobs:
             psiphon_v2ray-sources.jar
           retention-days: 30
 
-      # --------------------------------------------------------
-      # 13. Create Release (chỉ khi push tag)
-      # --------------------------------------------------------
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -167,3 +110,4 @@ jobs:
             psiphon_v2ray-sources.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
