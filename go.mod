@@ -7,7 +7,7 @@ require (
     github.com/xtls/xray-core v1.260327.1-0.20260601021109-94ffd50060f1
 )
 
-# Fix dependency lỗi
+// Fix dependency lỗi
 replace github.com/quic-go/qpack => github.com/quic-go/qpack v0.4.2
 replace github.com/apernet/quic-go => github.com/quic-go/quic-go v0.39.0
 replace google.golang.org/protobuf => google.golang.org/protobuf v1.36.0
