@@ -2,10 +2,9 @@ module github.com/caothemanh/psiphon_v2ray
 
 go 1.21
 
-require (
-	github.com/Psiphon-Labs/psiphon-tunnel-core v2.0.28+incompatible
-	github.com/xtls/xray-core v1.8.24
-	golang.org/x/mobile v0.0.0-20240506190922-a749a6e2b1b2
+replace (
+    github.com/Psiphon-Labs/chacha20 => github.com/Psiphon-Labs/chacha20 v0.0.0-20200916121732-6a9e25bdf1f7
+    github.com/Psiphon-Labs/goptlib => github.com/Psiphon-Labs/goptlib v0.0.0-20200406165125-c0e32a7a3464
 )
 
 require (
