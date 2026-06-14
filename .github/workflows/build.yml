@@ -72,57 +72,44 @@ jobs:
           ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
 
       # --------------------------------------------------------
-      # 7. Download Go dependencies
+      # 7. Fix Psiphon dependency pinning
+      # --------------------------------------------------------
+      - name: Fix Psiphon dependency pinning
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core/master/go.mod \
+            -o /tmp/psiphon_upstream.go.mod
+          python3 -c "
+          import re
+          with open('/tmp/psiphon_upstream.go.mod') as f:
+              upstream = f.read()
+          m = re.search(r'replace\s*\((.*?)\)', upstream, re.DOTALL)
+          if m:
+              with open('go.mod', 'a') as f:
+                  f.write('\nreplace (\n' + m.group(1).strip() + '\n)\n')
+              print('Patched go.mod with Psiphon replace directives')
+          else:
+              print('No replace block found in upstream go.mod')
+          "
+
+      # --------------------------------------------------------
+      # 8. Download Go dependencies
       # --------------------------------------------------------
       - name: Download dependencies
         run: |
-          cd ${{ github.workspace }}
           go mod download
           go mod tidy
-        - name: Fix Psiphon dependency pinning
-  run: |
-    cd ${{ github.workspace }}
-    # Fetch Psiphon's own go.mod to get the correct replace directives
-    curl -fsSL https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core/master/go.mod \
-      -o /tmp/psiphon_upstream.go.mod
-
-    # Extract replace directives from upstream and append to our go.mod
-    python3 - << 'EOF'
-    import re
-
-    with open("/tmp/psiphon_upstream.go.mod") as f:
-        upstream = f.read()
-
-    # Extract everything inside replace( ... )
-    m = re.search(r'replace\s*\((.*?)\)', upstream, re.DOTALL)
-    if not m:
-        print("No replace block found in upstream go.mod")
-        exit(0)
-
-    replaces = m.group(1).strip()
-
-    with open("go.mod", "a") as f:
-        f.write("\nreplace (\n")
-        f.write(replaces + "\n")
-        f.write(")\n")
-
-    print("Patched go.mod with Psiphon replace directives")
-    EOF
-
-    go mod tidy  
 
       # --------------------------------------------------------
-      # 8. Apply patches (nếu cần)
+      # 9. Apply patches (nếu cần)
       # --------------------------------------------------------
       - name: Apply Xray-core patches
         run: |
-          # Patch gVisor UDP forwarder nếu API thay đổi
           if [ -f "patches/patch_xray.py" ]; then
             python3 patches/patch_xray.py
           fi
 
       # --------------------------------------------------------
-      # 9. Build AAR
+      # 10. Build AAR
       # --------------------------------------------------------
       - name: Build AAR
         run: |
@@ -139,7 +126,7 @@ jobs:
           CGO_ENABLED: "1"
 
       # --------------------------------------------------------
-      # 10. Verify AAR
+      # 11. Verify AAR
       # --------------------------------------------------------
       - name: Verify AAR contents
         run: |
@@ -157,7 +144,7 @@ jobs:
           "
 
       # --------------------------------------------------------
-      # 11. Upload artifact
+      # 12. Upload artifact
       # --------------------------------------------------------
       - name: Upload AAR
         uses: actions/upload-artifact@v4
@@ -169,7 +156,7 @@ jobs:
           retention-days: 30
 
       # --------------------------------------------------------
-      # 12. Create Release (chỉ khi push tag)
+      # 13. Create Release (chỉ khi push tag)
       # --------------------------------------------------------
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
