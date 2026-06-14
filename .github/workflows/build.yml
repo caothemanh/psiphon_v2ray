@@ -52,10 +52,16 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
 
+      # go mod tidy sẽ tự resolve tất cả indirect deps từ staging-client
       - name: Download dependencies
         run: |
-          go mod download
           go mod tidy
+          go mod download
+        env:
+          GOFLAGS: "-mod=mod"
+          GONOSUMCHECK: "github.com/Psiphon-Labs/*"
+          GONOSUMDB: "github.com/Psiphon-Labs/*"
+          GOPRIVATE: ""
 
       - name: Apply Xray-core patches
         run: |
@@ -110,4 +116,4 @@ jobs:
             psiphon_v2ray-sources.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+           
