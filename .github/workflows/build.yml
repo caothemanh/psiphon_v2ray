@@ -79,6 +79,37 @@ jobs:
           cd ${{ github.workspace }}
           go mod download
           go mod tidy
+        - name: Fix Psiphon dependency pinning
+  run: |
+    cd ${{ github.workspace }}
+    # Fetch Psiphon's own go.mod to get the correct replace directives
+    curl -fsSL https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core/master/go.mod \
+      -o /tmp/psiphon_upstream.go.mod
+
+    # Extract replace directives from upstream and append to our go.mod
+    python3 - << 'EOF'
+    import re
+
+    with open("/tmp/psiphon_upstream.go.mod") as f:
+        upstream = f.read()
+
+    # Extract everything inside replace( ... )
+    m = re.search(r'replace\s*\((.*?)\)', upstream, re.DOTALL)
+    if not m:
+        print("No replace block found in upstream go.mod")
+        exit(0)
+
+    replaces = m.group(1).strip()
+
+    with open("go.mod", "a") as f:
+        f.write("\nreplace (\n")
+        f.write(replaces + "\n")
+        f.write(")\n")
+
+    print("Patched go.mod with Psiphon replace directives")
+    EOF
+
+    go mod tidy  
 
       # --------------------------------------------------------
       # 8. Apply patches (nếu cần)
