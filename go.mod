@@ -1,4 +1,4 @@
-module github.com/caothemanh/psiphon_v2ray
+module github.com/apernet/quic-go
 
 go 1.26
 
