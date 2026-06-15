@@ -89,7 +89,13 @@ jobs:
           print("=== Final go.mod ===")
           print(our_mod)
           PYEOF
-
+      - name: Restore golang.org/x/mobile
+        run: |
+           GOFLAGS="" go get golang.org/x/mobile@latest
+           GOFLAGS="" go get golang.org/x/mobile/cmd/gobind@latest
+        env:
+            GONOSUMDB: "*"
+            GOPROXY: "direct"
       - name: Download dependencies
         run: |
           go mod download 2>&1 | tail -40 || true
