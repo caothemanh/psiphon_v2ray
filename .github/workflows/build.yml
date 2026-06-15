@@ -16,36 +16,30 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # 1. Checkout repo chính
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Setup Go
       - name: Setup Go 1.26
         uses: actions/setup-go@v5
         with:
           go-version: '1.26'
           cache: true
 
-      # 3. Setup Java
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 4. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 5. Install NDK
       - name: Install NDK
         run: |
           sdkmanager "ndk;25.2.9519653" "cmake;3.22.1"
           echo "NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      # 6. Install gomobile
       - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
@@ -58,7 +52,10 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
 
-      # 7. Download dependencies
+      - name: Configure GitHub access
+        run: |
+          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Download dependencies
         run: |
           go mod tidy
@@ -69,14 +66,12 @@ jobs:
           GONOSUMDB: "github.com/Psiphon-Labs/*"
           GOPRIVATE: ""
 
-      # 8. Apply patches nếu có
       - name: Apply Xray-core patches
         run: |
           if [ -f "patches/patch_xray.py" ]; then
             python3 patches/patch_xray.py
           fi
 
-      # 9. Build AAR
       - name: Build AAR
         run: |
           gomobile bind \
@@ -91,7 +86,6 @@ jobs:
           GOFLAGS: "-mod=mod"
           CGO_ENABLED: "1"
 
-      # 10. Verify AAR contents
       - name: Verify AAR contents
         run: |
           echo "=== AAR size ==="
@@ -107,7 +101,6 @@ jobs:
                       print(n)
           "
 
-      # 11. Upload AAR artifact
       - name: Upload AAR
         uses: actions/upload-artifact@v4
         with:
@@ -117,7 +110,6 @@ jobs:
             psiphon_v2ray-sources.jar
           retention-days: 30
 
-      # 12. Create Release nếu có tag
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
