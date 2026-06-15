@@ -14,7 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Pin Go 1.21 để tránh tool directive issues với Go 1.24+
       - name: Setup Go 1.21
         uses: actions/setup-go@v5
         with:
@@ -37,8 +36,8 @@ jobs:
 
       - name: Install gomobile
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20240506190922-a749a6e2b1b2
-          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20240506190922-a749a6e2b1b2
+          GOFLAGS="" go install golang.org/x/mobile/cmd/gomobile@latest
+          GOFLAGS="" go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Configure git and Go env
