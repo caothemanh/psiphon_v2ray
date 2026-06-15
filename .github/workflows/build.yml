@@ -4,26 +4,21 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      android_min_sdk:
-        description: 'Android min SDK'
-        default: '21'
-        required: false
 
 jobs:
   build-aar:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go 1.26
+      - name: Setup Go 1.21
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
-          cache: true
+          go-version: '1.21'
+          cache: false
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -36,8 +31,7 @@ jobs:
 
       - name: Install NDK
         run: |
-          sdkmanager "ndk;25.2.9519653" "cmake;3.22.1"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+          sdkmanager "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
       - name: Install gomobile
@@ -46,60 +40,111 @@ jobs:
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: gomobile init
-        run: gomobile init
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
-
-      - name: Configure GitHub access
+      - name: Configure Go env
         run: |
-          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          go env -w GONOSUMDB="*"
+          go env -w GONOSUMCHECK="*"
+          go env -w GOPROXY="direct"
+          go env -w GOFLAGS="-mod=mod"
+
+      # Clone psiphon-tunnel-core để lấy go.sum chính xác
+      - name: Get Psiphon exact go.sum
+        run: |
+          git clone --depth=1 --branch v2.0.28 \
+            https://github.com/Psiphon-Labs/psiphon-tunnel-core.git \
+            /tmp/psi || \
+          git clone --depth=1 \
+            https://github.com/Psiphon-Labs/psiphon-tunnel-core.git \
+            /tmp/psi
+          echo "=== Psiphon go.mod ==="
+          cat /tmp/psi/go.mod | head -60
+
+      # Lấy đúng require/replace từ Psiphon go.mod gốc và merge vào go.mod của ta
+      - name: Merge Psiphon dependencies into go.mod
+        run: |
+          python3 << 'PYEOF'
+          import re, subprocess
+
+          # Đọc go.mod của Psiphon
+          with open('/tmp/psi/go.mod') as f:
+              psi_mod = f.read()
+
+          # Đọc go.mod của ta
+          with open('go.mod') as f:
+              our_mod = f.read()
+
+          # Extract replace directives từ Psiphon
+          replace_block = re.findall(r'replace\s*\((.*?)\)', psi_mod, re.DOTALL)
+          if replace_block:
+              replaces = replace_block[0].strip()
+              print("Psiphon replace directives:")
+              print(replaces)
+
+              # Thêm vào go.mod của ta
+              if 'replace (' not in our_mod:
+                  our_mod += f'\n\nreplace (\n{replaces}\n)\n'
+              else:
+                  our_mod = re.sub(r'replace \((.*?)\)', f'replace (\n{replaces}\n)', our_mod, flags=re.DOTALL)
+
+          # Extract require từ Psiphon (chỉ lấy Psiphon-Labs deps)
+          req_block = re.findall(r'require\s*\((.*?)\)', psi_mod, re.DOTALL)
+          psi_requires = []
+          for block in req_block:
+              for line in block.strip().splitlines():
+                  line = line.strip()
+                  if 'Psiphon-Labs' in line and '//' not in line[:3]:
+                      psi_requires.append(f'\t{line}')
+
+          if psi_requires:
+              req_str = '\n'.join(psi_requires)
+              print("Adding Psiphon-Labs deps:", req_str)
+              # Thêm vào require block đầu tiên
+              our_mod = re.sub(r'(require \([^)]+)', rf'\1\n{req_str}', our_mod, count=1)
+
+          with open('go.mod', 'w') as f:
+              f.write(our_mod)
+
+          print("\n=== Final go.mod ===")
+          print(our_mod)
+          PYEOF
 
       - name: Download dependencies
         run: |
-          go mod tidy
-          go mod download
+          go mod download 2>&1 | tail -30 || true
+          go mod tidy -e 2>&1 | tail -30 || true
         env:
           GOFLAGS: "-mod=mod"
-          GONOSUMCHECK: "github.com/Psiphon-Labs/*"
-          GONOSUMDB: "github.com/Psiphon-Labs/*"
-          GOPRIVATE: ""
+          GONOSUMDB: "*"
+          GOPROXY: "direct"
 
-      - name: Apply Xray-core patches
-        run: |
-          if [ -f "patches/patch_xray.py" ]; then
-            python3 patches/patch_xray.py
-          fi
+      - name: Show final go.mod
+        run: cat go.mod
+
+      - name: gomobile init
+        run: gomobile init
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
 
       - name: Build AAR
         run: |
           gomobile bind \
             -target=android/arm,android/arm64 \
-            -androidapi ${{ github.event.inputs.android_min_sdk || '21' }} \
+            -androidapi 21 \
             -o psiphon_v2ray.aar \
             -v \
             github.com/caothemanh/psiphon_v2ray/psiphon_v2ray
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
           GOFLAGS: "-mod=mod"
           CGO_ENABLED: "1"
+          GONOSUMDB: "*"
+          GOPROXY: "direct"
 
-      - name: Verify AAR contents
+      - name: Verify AAR
         run: |
-          echo "=== AAR size ==="
           ls -lh psiphon_v2ray.aar
-          echo "=== AAR contents ==="
           unzip -l psiphon_v2ray.aar
-          echo "=== Java classes ==="
-          unzip -p psiphon_v2ray.aar classes.jar | python3 -c "
-          import zipfile, io, sys
-          with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
-              for n in sorted(z.namelist()):
-                  if n.endswith('.class'):
-                      print(n)
-          "
 
       - name: Upload AAR
         uses: actions/upload-artifact@v4
@@ -109,13 +154,4 @@ jobs:
             psiphon_v2ray.aar
             psiphon_v2ray-sources.jar
           retention-days: 30
-
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            psiphon_v2ray.aar
-            psiphon_v2ray-sources.jar
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
