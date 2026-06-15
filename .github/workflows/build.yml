@@ -40,83 +40,65 @@ jobs:
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Configure Go env
+      - name: Configure git and Go env
         run: |
           git config --global url."https://github.com/".insteadOf "git://github.com/"
           go env -w GONOSUMDB="*"
-          go env -w GONOSUMCHECK="*"
           go env -w GOPROXY="direct"
           go env -w GOFLAGS="-mod=mod"
 
-      # Clone psiphon-tunnel-core để lấy go.sum chính xác
-      - name: Get Psiphon exact go.sum
+      - name: Get Psiphon exact go.mod
         run: |
-          git clone --depth=1 --branch v2.0.28 \
-            https://github.com/Psiphon-Labs/psiphon-tunnel-core.git \
-            /tmp/psi || \
           git clone --depth=1 \
             https://github.com/Psiphon-Labs/psiphon-tunnel-core.git \
             /tmp/psi
           echo "=== Psiphon go.mod ==="
-          cat /tmp/psi/go.mod | head -60
+          cat /tmp/psi/go.mod
 
-      # Lấy đúng require/replace từ Psiphon go.mod gốc và merge vào go.mod của ta
-      - name: Merge Psiphon dependencies into go.mod
+      - name: Merge Psiphon replace directives
         run: |
           python3 << 'PYEOF'
-          import re, subprocess
+          import re
 
-          # Đọc go.mod của Psiphon
           with open('/tmp/psi/go.mod') as f:
               psi_mod = f.read()
 
-          # Đọc go.mod của ta
           with open('go.mod') as f:
               our_mod = f.read()
 
-          # Extract replace directives từ Psiphon
-          replace_block = re.findall(r'replace\s*\((.*?)\)', psi_mod, re.DOTALL)
-          if replace_block:
-              replaces = replace_block[0].strip()
-              print("Psiphon replace directives:")
-              print(replaces)
+          # Extract replace block từ Psiphon go.mod
+          replace_blocks = re.findall(r'replace\s*\((.*?)\)', psi_mod, re.DOTALL)
+          single_replaces = re.findall(r'^replace\s+\S+\s+=>\s+\S+\s+\S+', psi_mod, re.MULTILINE)
 
-              # Thêm vào go.mod của ta
-              if 'replace (' not in our_mod:
-                  our_mod += f'\n\nreplace (\n{replaces}\n)\n'
-              else:
-                  our_mod = re.sub(r'replace \((.*?)\)', f'replace (\n{replaces}\n)', our_mod, flags=re.DOTALL)
-
-          # Extract require từ Psiphon (chỉ lấy Psiphon-Labs deps)
-          req_block = re.findall(r'require\s*\((.*?)\)', psi_mod, re.DOTALL)
-          psi_requires = []
-          for block in req_block:
+          replaces = []
+          for block in replace_blocks:
               for line in block.strip().splitlines():
                   line = line.strip()
-                  if 'Psiphon-Labs' in line and '//' not in line[:3]:
-                      psi_requires.append(f'\t{line}')
+                  if line and not line.startswith('//'):
+                      replaces.append(f'\t{line}')
+          for r in single_replaces:
+              replaces.append(f'\t{r.replace("replace ", "")}')
 
-          if psi_requires:
-              req_str = '\n'.join(psi_requires)
-              print("Adding Psiphon-Labs deps:", req_str)
-              # Thêm vào require block đầu tiên
-              our_mod = re.sub(r'(require \([^)]+)', rf'\1\n{req_str}', our_mod, count=1)
+          if replaces:
+              replace_str = '\n'.join(replaces)
+              print(f"Adding {len(replaces)} replace directives from Psiphon")
+              our_mod = our_mod.rstrip() + f'\n\nreplace (\n{replace_str}\n)\n'
 
           with open('go.mod', 'w') as f:
               f.write(our_mod)
 
-          print("\n=== Final go.mod ===")
+          print("=== Final go.mod ===")
           print(our_mod)
           PYEOF
 
       - name: Download dependencies
         run: |
-          go mod download 2>&1 | tail -30 || true
-          go mod tidy -e 2>&1 | tail -30 || true
+          go mod download 2>&1 | tail -40 || true
+          go mod tidy -e 2>&1 | tail -20 || true
         env:
-          GOFLAGS: "-mod=mod"
           GONOSUMDB: "*"
           GOPROXY: "direct"
+          GOFLAGS: "-mod=mod"
 
       - name: Show final go.mod
         run: cat go.mod
